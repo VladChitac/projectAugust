@@ -41,38 +41,100 @@ class UserController extends AbstractController
     #[Route('/register', name: 'register', methods: ['POST'])]
     public function register(Request $req): JsonResponse
     {
-        $data = json_decode($req->getContent(), true) ?: [];
+        // Decode and validate JSON
+        $data = json_decode($req->getContent(), true);
+        if (!is_array($data)) {
+            return $this->json(['error' => 'Invalid JSON data'], 400);
+        }
+
         if (empty($data['username']) || empty($data['email']) || empty($data['password'])) {
-            return $this->json(['error' => 'Missing fields'], 400);
-        }
-        if ($this->em->getRepository(User::class)->findOneBy(['email' => $data['email']])) {
-            return $this->json(['error' => 'Email in use'], 409);
+            return $this->json(['error' => 'All fields are required'], 400);
         }
 
-        $user = (new User())
-            ->setUsername($data['username'])
-            ->setEmail($data['email'])
-            ->setRole('user');
-        $user->setPassword(
-            $this->hasher->hashPassword($user, $data['password'])
-        );
+        // Sanitize input
+        $username = trim($data['username']);
+        $email = trim(strtolower($data['email']));
+        $password = $data['password'];
 
-        $this->em->persist($user);
-        $this->em->flush();
+        // Validate username
+        if (strlen($username) < 3 || strlen($username) > 50) {
+            return $this->json(['error' => 'Username must be between 3 and 50 characters'], 400);
+        }
+        if (!preg_match('/^[a-zA-Z0-9_.-]+$/', $username)) {
+            return $this->json(['error' => 'Username can only contain letters, numbers, dots, hyphens and underscores'], 400);
+        }
 
-        return $this->json(['message' => 'Registered'], 201);
+        // Validate email
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->json(['error' => 'Please enter a valid email address'], 400);
+        }
+        if (strlen($email) > 180) {
+            return $this->json(['error' => 'Email cannot be longer than 180 characters'], 400);
+        }
+
+        // Validate password strength
+        if (strlen($password) < 8) {
+            return $this->json(['error' => 'Password must be at least 8 characters long'], 400);
+        }
+        if (!preg_match('/[a-zA-Z]/', $password)) {
+            return $this->json(['error' => 'Password must contain at least one letter'], 400);
+        }
+        if (!preg_match('/[0-9]/', $password)) {
+            return $this->json(['error' => 'Password must contain at least one number'], 400);
+        }
+
+        // Check if email already exists
+        if ($this->em->getRepository(User::class)->findOneBy(['email' => $email])) {
+            return $this->json(['error' => 'Email is already registered'], 409);
+        }
+
+        // Check if username already exists
+        if ($this->em->getRepository(User::class)->findOneBy(['username' => $username])) {
+            return $this->json(['error' => 'Username is already taken'], 409);
+        }
+
+        try {
+            $user = (new User())
+                ->setUsername($username)
+                ->setEmail($email)
+                ->setRole('user');
+            
+            $user->setPassword(
+                $this->hasher->hashPassword($user, $password)
+            );
+
+            $this->em->persist($user);
+            $this->em->flush();
+
+            return $this->json(['message' => 'User registered successfully'], 201);
+        } catch (\Exception $e) {
+            // Log the actual error for debugging but don't expose it to the user
+            error_log('Registration error: ' . $e->getMessage());
+            return $this->json(['error' => 'Registration failed'], 500);
+        }
     }
 
     #[Route('/forgot-password', name: 'forgot_password', methods: ['POST'])]
     public function forgotPassword(Request $req): JsonResponse
     {
-        $data = json_decode($req->getContent(), true) ?: [];
+        // Decode and validate JSON
+        $data = json_decode($req->getContent(), true);
+        if (!is_array($data)) {
+            return $this->json(['error' => 'Invalid JSON data'], 400);
+        }
+
         if (empty($data['email'])) {
             return $this->json(['error' => 'Email is required'], 400);
         }
 
+        // Sanitize and validate email
+        $email = trim(strtolower($data['email']));
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->json(['error' => 'Please enter a valid email address'], 400);
+        }
+
         /** @var User|null $user */
-        $user = $this->em->getRepository(User::class)->findOneBy(['email' => $data['email']]);
+        $user = $this->em->getRepository(User::class)->findOneBy(['email' => $email]);
         
         // Always return success message for security (don't reveal if email exists)
         if (!$user) {
@@ -110,26 +172,74 @@ class UserController extends AbstractController
     public function createAdmin(Request $req): JsonResponse
     {
         $this->denyAccessUnlessGranted('ROLE_ADMIN');
-        $data = json_decode($req->getContent(), true) ?: [];
+        
+        // Decode and validate JSON
+        $data = json_decode($req->getContent(), true);
+        if (!is_array($data)) {
+            return $this->json(['error' => 'Invalid JSON data'], 400);
+        }
+
         if (empty($data['username']) || empty($data['email']) || empty($data['password'])) {
-            return $this->json(['error' => 'Missing fields'], 400);
-        }
-        if ($this->em->getRepository(User::class)->findOneBy(['email' => $data['email']])) {
-            return $this->json(['error' => 'Email in use'], 409);
+            return $this->json(['error' => 'All fields are required'], 400);
         }
 
-        $user = (new User())
-            ->setUsername($data['username'])
-            ->setEmail($data['email'])
-            ->setRole('admin');
-        $user->setPassword(
-            $this->hasher->hashPassword($user, $data['password'])
-        );
+        // Sanitize input
+        $username = trim($data['username']);
+        $email = trim(strtolower($data['email']));
+        $password = $data['password'];
 
-        $this->em->persist($user);
-        $this->em->flush();
+        // Validate username
+        if (strlen($username) < 3 || strlen($username) > 50) {
+            return $this->json(['error' => 'Username must be between 3 and 50 characters'], 400);
+        }
+        if (!preg_match('/^[a-zA-Z0-9_.-]+$/', $username)) {
+            return $this->json(['error' => 'Username can only contain letters, numbers, dots, hyphens and underscores'], 400);
+        }
 
-        return $this->json(['message' => 'Admin created'], 201);
+        // Validate email
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->json(['error' => 'Please enter a valid email address'], 400);
+        }
+
+        // Validate password strength
+        if (strlen($password) < 8) {
+            return $this->json(['error' => 'Password must be at least 8 characters long'], 400);
+        }
+        if (!preg_match('/[a-zA-Z]/', $password)) {
+            return $this->json(['error' => 'Password must contain at least one letter'], 400);
+        }
+        if (!preg_match('/[0-9]/', $password)) {
+            return $this->json(['error' => 'Password must contain at least one number'], 400);
+        }
+
+        // Check if email already exists
+        if ($this->em->getRepository(User::class)->findOneBy(['email' => $email])) {
+            return $this->json(['error' => 'Email is already registered'], 409);
+        }
+
+        // Check if username already exists
+        if ($this->em->getRepository(User::class)->findOneBy(['username' => $username])) {
+            return $this->json(['error' => 'Username is already taken'], 409);
+        }
+
+        try {
+            $user = (new User())
+                ->setUsername($username)
+                ->setEmail($email)
+                ->setRole('admin');
+            
+            $user->setPassword(
+                $this->hasher->hashPassword($user, $password)
+            );
+
+            $this->em->persist($user);
+            $this->em->flush();
+
+            return $this->json(['message' => 'Admin created successfully'], 201);
+        } catch (\Exception $e) {
+            error_log('Admin creation error: ' . $e->getMessage());
+            return $this->json(['error' => 'Admin creation failed'], 500);
+        }
     }
 
     #[Route('', name: 'list', methods: ['GET'])]
@@ -223,37 +333,101 @@ class UserController extends AbstractController
     {
         $this->denyAccessUnlessGranted('ROLE_ADMIN');
 
-        $d = json_decode($req->getContent(), true) ?? [];
-        foreach (['username', 'email', 'password'] as $f) {
-            if (empty($d[$f])) {
-                return $this->json(["error"=>"Missing $f"], 400);
+        // Decode and validate JSON
+        $data = json_decode($req->getContent(), true);
+        if (!is_array($data)) {
+            return $this->json(['error' => 'Invalid JSON data'], 400);
+        }
+
+        foreach (['username', 'email', 'password'] as $field) {
+            if (empty($data[$field])) {
+                return $this->json(["error" => "Missing $field"], 400);
             }
         }
-        if ($this->em->getRepository(User::class)
-                     ->findOneBy(['email'=>$d['email']])) {
-            return $this->json(['error'=>'Email in use'], 409);
+
+        // Sanitize input
+        $username = trim($data['username']);
+        $email = trim(strtolower($data['email']));
+        $password = $data['password'];
+
+        // Validate username
+        if (strlen($username) < 3 || strlen($username) > 50) {
+            return $this->json(['error' => 'Username must be between 3 and 50 characters'], 400);
+        }
+        if (!preg_match('/^[a-zA-Z0-9_.-]+$/', $username)) {
+            return $this->json(['error' => 'Username can only contain letters, numbers, dots, hyphens and underscores'], 400);
         }
 
-        $role = ($d['role'] ?? 'user') === 'admin' ? 'admin' : 'user';
+        // Validate email
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->json(['error' => 'Please enter a valid email address'], 400);
+        }
 
-        $u = (new User())
-            ->setUsername($d['username'])
-            ->setEmail($d['email'])
-            ->setRole($role);
-        $u->setPassword($this->hasher->hashPassword($u, $d['password']));
+        // Validate password strength
+        if (strlen($password) < 8) {
+            return $this->json(['error' => 'Password must be at least 8 characters long'], 400);
+        }
+        if (!preg_match('/[a-zA-Z]/', $password)) {
+            return $this->json(['error' => 'Password must contain at least one letter'], 400);
+        }
+        if (!preg_match('/[0-9]/', $password)) {
+            return $this->json(['error' => 'Password must contain at least one number'], 400);
+        }
 
-        $this->em->persist($u);
-        $this->em->flush();
+        // Check if email already exists
+        if ($this->em->getRepository(User::class)->findOneBy(['email' => $email])) {
+            return $this->json(['error' => 'Email is already registered'], 409);
+        }
 
-        return $this->json(['id'=>$u->getId(), 'role'=>$u->getRole()], 201);
+        // Check if username already exists
+        if ($this->em->getRepository(User::class)->findOneBy(['username' => $username])) {
+            return $this->json(['error' => 'Username is already taken'], 409);
+        }
+
+        $role = ($data['role'] ?? 'user') === 'admin' ? 'admin' : 'user';
+
+        try {
+            $user = (new User())
+                ->setUsername($username)
+                ->setEmail($email)
+                ->setRole($role);
+            
+            $user->setPassword($this->hasher->hashPassword($user, $password));
+
+            $this->em->persist($user);
+            $this->em->flush();
+
+            return $this->json(['id' => $user->getId(), 'role' => $user->getRole()], 201);
+        } catch (\Exception $e) {
+            error_log('User creation error: ' . $e->getMessage());
+            return $this->json(['error' => 'User creation failed'], 500);
+        }
     }
 
     #[Route('/reset-password-token/{token}', name: 'reset_password_with_token', methods: ['POST'])]
     public function resetPasswordWithToken(string $token, Request $req): JsonResponse
     {
-        $data = json_decode($req->getContent(), true) ?: [];
+        // Decode and validate JSON
+        $data = json_decode($req->getContent(), true);
+        if (!is_array($data)) {
+            return $this->json(['error' => 'Invalid JSON data'], 400);
+        }
+
         if (empty($data['password'])) {
-            return $this->json(['error' => 'Missing password'], 400);
+            return $this->json(['error' => 'Password is required'], 400);
+        }
+
+        $password = $data['password'];
+
+        // Validate password strength
+        if (strlen($password) < 8) {
+            return $this->json(['error' => 'Password must be at least 8 characters long'], 400);
+        }
+        if (!preg_match('/[a-zA-Z]/', $password)) {
+            return $this->json(['error' => 'Password must contain at least one letter'], 400);
+        }
+        if (!preg_match('/[0-9]/', $password)) {
+            return $this->json(['error' => 'Password must contain at least one number'], 400);
         }
 
         // Find the password reset request using repository method
@@ -264,16 +438,21 @@ class UserController extends AbstractController
             return $this->json(['error' => 'Invalid or expired token'], 404);
         }
 
-        // Reset the password
-        $user = $passwordResetRequest->getUser();
-        $hashedPassword = $this->hasher->hashPassword($user, $data['password']);
-        $user->setPassword($hashedPassword);
+        try {
+            // Reset the password
+            $user = $passwordResetRequest->getUser();
+            $hashedPassword = $this->hasher->hashPassword($user, $password);
+            $user->setPassword($hashedPassword);
 
-        // Remove the used token
-        $this->em->remove($passwordResetRequest);
-        $this->em->flush();
+            // Remove the used token
+            $this->em->remove($passwordResetRequest);
+            $this->em->flush();
 
-        return $this->json(['message' => 'Password has been reset successfully']);
+            return $this->json(['message' => 'Password has been reset successfully']);
+        } catch (\Exception $e) {
+            error_log('Password reset error: ' . $e->getMessage());
+            return $this->json(['error' => 'Password reset failed'], 500);
+        }
     }
 
 }
