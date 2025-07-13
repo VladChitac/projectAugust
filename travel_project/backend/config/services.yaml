@@ -1,0 +1,28 @@
+# config/services.yaml
+parameters:
+    # назва параметра — має співпасти з тим, що ви підставляєте в bind
+    weatherapi_key: '%env(WEATHERAPI_KEY)%'
+
+services:
+    _defaults:
+        autowire:      true
+        autoconfigure: true
+        public:        false
+
+        # Якщо у __construct() контролера є аргумент $weatherApiKey — він підставиться звідси
+        bind:
+            string $weatherApiKey: '%weatherapi_key%'
+
+    # всі контролери мають бути публічними і з тегом controller.service_arguments
+    App\Controller\:
+        resource: '../src/Controller'
+        tags: ['controller.service_arguments']
+        public: true
+
+    # Решта ваших автосервісів
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/DependencyInjection/'
+            - '../src/Entity/'
+            - '../src/Kernel.php'
